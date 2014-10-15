@@ -99,7 +99,7 @@ func New(
 }
 
 func (p *LinuxContainerPool) MaxContainers() int {
-	maxNet := 100 // TODO: FIXME_BEFORE_MERGE p.networkPool.InitialSize()
+	maxNet := p.networkPool.Capacity()
 	maxUid := p.uidPool.InitialSize()
 	if maxNet < maxUid {
 		return maxNet

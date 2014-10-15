@@ -39,8 +39,23 @@ var _ = Describe("Subnet Pool", func() {
 				Ω(err).ShouldNot(HaveOccurred())
 			})
 
-			It("returns the correct number of subnets", func() {
+			It("returns the correct number of subnets initially and repeatedly", func() {
 				Ω(manager.Capacity()).Should(Equal(2))
+				Ω(manager.Capacity()).Should(Equal(2))
+			})
+
+			It("returns the correct capacity after allocating subnets", func() {
+				cap := manager.Capacity()
+
+				_, err := manager.AllocateDynamically()
+				Ω(err).ShouldNot(HaveOccurred())
+
+				Ω(manager.Capacity()).Should(Equal(cap))
+
+				_, err = manager.AllocateDynamically()
+				Ω(err).ShouldNot(HaveOccurred())
+
+				Ω(manager.Capacity()).Should(Equal(cap))
 			})
 		})
 	})

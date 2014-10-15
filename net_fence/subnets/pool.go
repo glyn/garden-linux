@@ -33,6 +33,7 @@ type manager struct {
 	dynamicAllocationNet *net.IPNet
 	pool                 []*net.IPNet
 	static               []*net.IPNet
+	capacity             int
 
 	mutex sync.Mutex
 }
@@ -71,7 +72,7 @@ func New(ipNet *net.IPNet) (Manager, error) {
 		}
 	}
 
-	return &manager{dynamicAllocationNet: ipNet, pool: pool}, nil
+	return &manager{dynamicAllocationNet: ipNet, pool: pool, capacity: len(pool)}, nil
 }
 
 func (m *manager) PoolFoxNetworkBad() string {
@@ -79,7 +80,7 @@ func (m *manager) PoolFoxNetworkBad() string {
 }
 
 func (m *manager) Capacity() int {
-	return 0
+	return m.capacity
 }
 
 func (m *manager) AllocateStatically(ipNet *net.IPNet) error {

@@ -25,7 +25,7 @@ func New(ipNet *net.IPNet) *FakeNetworkPool {
 	}
 }
 
-func (p *FakeNetworkPool) InitialSize() int {
+func (p *FakeNetworkPool) Capacity() int {
 	return p.InitialPoolSize
 }
 
