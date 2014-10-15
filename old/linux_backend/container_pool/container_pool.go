@@ -226,13 +226,11 @@ func (p *LinuxContainerPool) Restore(snapshot io.Reader) (linux_backend.Containe
 		return nil, err
 	}
 
-	/* TODO: FIXME_BEFORE_MERGE
-	err = p.networkPool.Remove(resources.Network)
+	err = p.networkPool.Recover(resources.Network.FoxBadIPN())
 	if err != nil {
 		p.uidPool.Release(resources.UID)
 		return nil, err
 	}
-	*/
 
 	for _, port := range resources.Ports {
 		err = p.portPool.Remove(port)

@@ -11,10 +11,10 @@ type FakeNetworkPool struct {
 	InitialPoolSize int
 
 	AcquireError error
-	RemoveError  error
+	RecoverError error
 
-	Released []string
-	Removed  []string
+	Released  []string
+	Recovered []string
 }
 
 func New(ipNet *net.IPNet) *FakeNetworkPool {
@@ -57,6 +57,15 @@ func (p *FakeNetworkPool) PoolFoxNetworkBad() string {
 
 func (p *FakeNetworkPool) Release(ipNet *net.IPNet) error {
 	p.Released = append(p.Released, ipNet.String())
+	return nil
+}
+
+func (p *FakeNetworkPool) Recover(ipNet *net.IPNet) error {
+	if p.RecoverError != nil {
+		return p.RecoverError
+	}
+
+	p.Recovered = append(p.Recovered, ipNet.String())
 	return nil
 }
 

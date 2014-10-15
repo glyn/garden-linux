@@ -710,11 +710,11 @@ var _ = Describe("Container pool", func() {
 			Ω(fakeUIDPool.Removed).Should(ContainElement(uint32(10000)))
 		})
 
-		PIt("removes its network from the pool", func() {
+		It("removes its network from the pool", func() {
 			_, err := pool.Restore(snapshot)
 			Ω(err).ShouldNot(HaveOccurred())
 
-			Ω(fakeNetworkPool.Removed).Should(ContainElement(restoredNetwork.String()))
+			Ω(fakeNetworkPool.Recovered).Should(ContainElement(restoredNetwork.String()))
 		})
 
 		It("removes its ports from the pool", func() {
@@ -754,10 +754,10 @@ var _ = Describe("Container pool", func() {
 			disaster := errors.New("oh no!")
 
 			JustBeforeEach(func() {
-				fakeNetworkPool.RemoveError = disaster
+				fakeNetworkPool.RecoverError = disaster
 			})
 
-			PIt("returns the error and releases the uid", func() {
+			It("returns the error and releases the uid", func() {
 				_, err := pool.Restore(snapshot)
 				Ω(err).Should(Equal(disaster))
 
@@ -777,7 +777,7 @@ var _ = Describe("Container pool", func() {
 				Ω(err).Should(Equal(disaster))
 
 				Ω(fakeUIDPool.Released).Should(ContainElement(uint32(10000)))
-				Ω(fakeNetworkPool.Released).Should(ContainElement(restoredNetwork.String()))
+				Ω(fakeNetworkPool.Recovered).Should(ContainElement(restoredNetwork.String()))
 				Ω(fakePortPool.Released).Should(ContainElement(uint32(61001)))
 				Ω(fakePortPool.Released).Should(ContainElement(uint32(61002)))
 				Ω(fakePortPool.Released).Should(ContainElement(uint32(61003)))

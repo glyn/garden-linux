@@ -19,14 +19,20 @@ type Manager interface {
 	// Releases a previously-allocated network back to the pool
 	Release(*net.IPNet) error
 
+	// Recover a previously allocated network so it appears to be allocated again
+	Recover(*net.IPNet) error
+
+	// Capacity -- number of /30 subnets in the dynamic allocation net
+	Capacity() int
+
 	// FIXME
 	PoolFoxNetworkBad() string
 }
 
 type manager struct {
-	network *net.IPNet
-	pool    []*net.IPNet
-	static  []*net.IPNet
+	dynamicAllocationNet *net.IPNet
+	pool                 []*net.IPNet
+	static               []*net.IPNet
 
 	mutex sync.Mutex
 }
@@ -49,43 +55,67 @@ func init() {
 	slash30mask = maskedNetwork.Mask
 }
 
-func New(network *net.IPNet) (Manager, error) {
-	min := network.IP
+func New(ipNet *net.IPNet) (Manager, error) {
+	min := ipNet.IP
 	max := make([]byte, len(min))
-	for i, b := range network.Mask {
+	for i, b := range ipNet.Mask {
 		max[i] = min[i] | ^b
 	}
 
 	pool := make([]*net.IPNet, 0)
-	for ip := min; network.Contains(ip); ip = next(ip) {
+	for ip := min; ipNet.Contains(ip); ip = next(ip) {
 		subnet := &net.IPNet{ip, slash30mask}
 		ip = next(next(next(ip)))
-		if network.Contains(ip) {
+		if ipNet.Contains(ip) {
 			pool = append(pool, subnet)
 		}
 	}
 
-	return &manager{network: network, pool: pool}, nil
+	return &manager{dynamicAllocationNet: ipNet, pool: pool}, nil
 }
 
 func (m *manager) PoolFoxNetworkBad() string {
-	return m.network.String()
+	return m.dynamicAllocationNet.String()
 }
 
-func (m *manager) AllocateStatically(request *net.IPNet) error {
-	if m.network.Contains(request.IP) {
+func (m *manager) Capacity() int {
+	return 0
+}
+
+func (m *manager) AllocateStatically(ipNet *net.IPNet) error {
+	if m.dynamicAllocationNet.Contains(ipNet.IP) {
 		return ErrAlreadyAllocated
 	}
 
 	for _, s := range m.static {
-		if s.Contains(request.IP) {
+		if s.Contains(ipNet.IP) {
 			return ErrAlreadyAllocated
 		}
 	}
 
-	m.static = append(m.static, request)
+	m.static = append(m.static, ipNet)
 
 	return nil
+}
+
+func (m *manager) Recover(ipNet *net.IPNet) error {
+	if !m.dynamicAllocationNet.Contains(ipNet.IP) {
+		return m.AllocateStatically(ipNet)
+	}
+
+	found := -1
+	for i, s := range m.pool {
+		if s.IP.Equal(ipNet.IP) {
+			found = i
+		}
+	}
+
+	if found > -1 {
+		m.pool = append(m.pool[:found], m.pool[found+1:]...)
+		return nil
+	}
+
+	return ErrAlreadyAllocated
 }
 
 func (m *manager) AllocateDynamically() (*net.IPNet, error) {
@@ -102,19 +132,19 @@ func (m *manager) AllocateDynamically() (*net.IPNet, error) {
 	return acquired, nil
 }
 
-func (m *manager) Release(network *net.IPNet) error {
+func (m *manager) Release(ipNet *net.IPNet) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	for _, n := range m.pool {
-		if n == network {
+		if n.IP.Equal(ipNet.IP) {
 			return ErrReleasedUnallocatedNetwork
 		}
 	}
 
 	found := -1
 	for i, s := range m.static {
-		if s == network {
+		if s.IP.Equal(ipNet.IP) {
 			found = i
 		}
 	}
@@ -123,7 +153,7 @@ func (m *manager) Release(network *net.IPNet) error {
 		m.static = append(m.static[:found], m.static[found+1:]...)
 	}
 
-	m.pool = append(m.pool, network)
+	m.pool = append(m.pool, ipNet)
 	return nil
 }
 
