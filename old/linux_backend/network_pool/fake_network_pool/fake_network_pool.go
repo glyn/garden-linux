@@ -2,8 +2,6 @@ package fake_network_pool
 
 import (
 	"net"
-
-	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/network"
 )
 
 type FakeNetworkPool struct {
@@ -31,7 +29,7 @@ func (p *FakeNetworkPool) InitialSize() int {
 	return p.InitialPoolSize
 }
 
-func (p *FakeNetworkPool) Acquire() (*network.Network, error) {
+func (p *FakeNetworkPool) AllocateDynamically() (*net.IPNet, error) {
 	if p.AcquireError != nil {
 		return nil, p.AcquireError
 	}
@@ -46,21 +44,20 @@ func (p *FakeNetworkPool) Acquire() (*network.Network, error) {
 	inc(p.nextNetwork)
 	inc(p.nextNetwork)
 
-	return network.New(ipNet), nil
+	return ipNet, nil
 }
 
-func (p *FakeNetworkPool) Remove(network *network.Network) error {
-	if p.RemoveError != nil {
-		return p.RemoveError
-	}
-
-	p.Removed = append(p.Removed, network.String())
-
+func (p *FakeNetworkPool) AllocateStatically(ipNet *net.IPNet) error {
 	return nil
 }
 
-func (p *FakeNetworkPool) Release(network *network.Network) {
-	p.Released = append(p.Released, network.String())
+func (p *FakeNetworkPool) PoolFoxNetworkBad() string {
+	return p.ipNet.String()
+}
+
+func (p *FakeNetworkPool) Release(ipNet *net.IPNet) error {
+	p.Released = append(p.Released, ipNet.String())
+	return nil
 }
 
 func (p *FakeNetworkPool) Network() *net.IPNet {

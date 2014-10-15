@@ -21,10 +21,11 @@ import (
 	"github.com/onsi/gomega/gbytes"
 	"github.com/pivotal-golang/lager/lagertest"
 
+	"github.com/cloudfoundry-incubator/garden-linux/net_fence/subnets"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/bandwidth_manager/fake_bandwidth_manager"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/cgroups_manager/fake_cgroups_manager"
-	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/network_pool"
+	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/network"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/port_pool/fake_port_pool"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/process_tracker/fake_process_tracker"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/quota_manager/fake_quota_manager"
@@ -59,9 +60,10 @@ var _ = Describe("Linux containers", func() {
 
 		fakePortPool = fake_port_pool.New(1000)
 
-		networkPool := network_pool.New(ipNet)
+		networkPool, err := subnets.New(ipNet)
+		Ω(err).ShouldNot(HaveOccurred())
 
-		network, err := networkPool.Acquire()
+		netw, err := networkPool.AllocateDynamically()
 		Ω(err).ShouldNot(HaveOccurred())
 
 		containerDir, err = ioutil.TempDir("", "depot")
@@ -74,7 +76,7 @@ var _ = Describe("Linux containers", func() {
 
 		containerResources = linux_backend.NewResources(
 			1234,
-			network,
+			network.New(netw),
 			[]uint32{},
 		)
 

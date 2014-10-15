@@ -10,20 +10,9 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Subnets", func() {
+var _ = Describe("Subnet Pool", func() {
 	var manager subnets.Manager
 	var defaultSubnetPool *net.IPNet
-
-	Describe("Creating with a /32 IP range", func() {
-		It("returns an error", func() {
-			var err error
-			_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/32")
-			Ω(err).ShouldNot(HaveOccurred())
-
-			manager, err = subnets.New(defaultSubnetPool)
-			Ω(err).Should(HaveOccurred())
-		})
-	})
 
 	Describe("Allocating and Releasing", func() {
 		JustBeforeEach(func() {
@@ -32,149 +21,219 @@ var _ = Describe("Subnets", func() {
 			Ω(err).ShouldNot(HaveOccurred())
 		})
 
-		Context("when the pool does not have sufficient IPs to allocate a subnet", func() {
-			BeforeEach(func() {
-				var err error
-				_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/31")
-				Ω(err).ShouldNot(HaveOccurred())
-			})
-
-			It("the first request returns an error", func() {
-				_, err := manager.AllocateDynamically()
-				Ω(err).Should(HaveOccurred())
-			})
-		})
-
-		Context("when the pool has sufficient IPs to allocate a single subnet", func() {
-			BeforeEach(func() {
-				var err error
-				_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/30")
-				Ω(err).ShouldNot(HaveOccurred())
-			})
-
-			Context("the first request", func() {
-				It("succeeds, and returns a /30 network within the subnet", func() {
-					network, err := manager.AllocateDynamically()
+		Describe("Static Allocation", func() {
+			Context("when the requested IP is within the dynamic allocation range", func() {
+				BeforeEach(func() {
+					var err error
+					_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/29")
 					Ω(err).ShouldNot(HaveOccurred())
-
-					Ω(network).ShouldNot(BeNil())
-					Ω(network.String()).Should(Equal("10.2.3.0/30"))
 				})
-			})
 
-			Context("subsequent requests", func() {
-				It("fail, and return an err", func() {
-					_, err := manager.AllocateDynamically()
+				It("returns an appropriate error", func() {
+					_, static, err := net.ParseCIDR("10.2.3.4/30")
 					Ω(err).ShouldNot(HaveOccurred())
 
-					_, err = manager.AllocateDynamically()
+					err = manager.AllocateStatically(static)
 					Ω(err).Should(HaveOccurred())
+					Ω(err).Should(Equal(subnets.ErrAlreadyAllocated))
 				})
 			})
 
-			Context("when an allocated network is released", func() {
-				It("a subsequent allocation succeeds, and returns the first network again", func() {
-					// first
-					allocated, err := manager.AllocateDynamically()
+			Context("when the requested subnet is not within the dynamic allocation range", func() {
+				BeforeEach(func() {
+					var err error
+					_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/29")
 					Ω(err).ShouldNot(HaveOccurred())
-
-					// second - will fail (sanity check)
-					_, err = manager.AllocateDynamically()
-					Ω(err).Should(HaveOccurred())
-
-					// release
-					err = manager.Release(allocated)
-					Ω(err).ShouldNot(HaveOccurred())
-
-					// third - should work now because of release
-					network, err := manager.AllocateDynamically()
-					Ω(err).ShouldNot(HaveOccurred())
-
-					Ω(network).ShouldNot(BeNil())
-					Ω(network.String()).Should(Equal(allocated.String()))
 				})
-			})
 
-			Context("when a network is released twice", func() {
-				It("returns an error", func() {
-					// first
-					allocated, err := manager.AllocateDynamically()
-					Ω(err).ShouldNot(HaveOccurred())
-
-					// release
-					err = manager.Release(allocated)
-					Ω(err).ShouldNot(HaveOccurred())
-
-					// release again
-					err = manager.Release(allocated)
-					Ω(err).Should(HaveOccurred())
-					Ω(err).Should(Equal(subnets.ErrReleasedUnallocatedNetwork))
-				})
-			})
-
-			It("allocates distinct networks concurrently", func() {
-				prev := runtime.GOMAXPROCS(2)
-				defer runtime.GOMAXPROCS(prev)
-
-				Consistently(func() bool {
-					_, network, err := net.ParseCIDR("10.0.0.0/29")
-					Ω(err).ShouldNot(HaveOccurred())
-
-					pool, err := subnets.New(network)
-					Ω(err).ShouldNot(HaveOccurred())
-
-					out := make(chan *net.IPNet)
-					go func(out chan *net.IPNet) {
-						defer GinkgoRecover()
-						n1, err := pool.AllocateDynamically()
+				Context("the first request", func() {
+					It("does not return an error", func() {
+						_, static, err := net.ParseCIDR("10.9.3.4/30")
 						Ω(err).ShouldNot(HaveOccurred())
-						out <- n1
-					}(out)
 
-					go func(out chan *net.IPNet) {
-						defer GinkgoRecover()
-						n1, err := pool.AllocateDynamically()
+						err = manager.AllocateStatically(static)
 						Ω(err).ShouldNot(HaveOccurred())
-						out <- n1
-					}(out)
-
-					a := <-out
-					b := <-out
-					return a.IP.Equal(b.IP)
-				}, "100ms", "2ms").ShouldNot(BeTrue())
-			})
-
-		})
-
-		Context("when the pool has sufficient IPs to allocate two subnets", func() {
-			BeforeEach(func() {
-				var err error
-				_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/29")
-				Ω(err).ShouldNot(HaveOccurred())
-
-			})
-
-			Context("the second request", func() {
-				It("succeeds", func() {
-					_, err := manager.AllocateDynamically()
-					Ω(err).ShouldNot(HaveOccurred())
-
-					_, err = manager.AllocateDynamically()
-					Ω(err).ShouldNot(HaveOccurred())
+					})
 				})
 
-				It("returns the second /30 network within the subnet", func() {
-					_, err := manager.AllocateDynamically()
-					Ω(err).ShouldNot(HaveOccurred())
+				Context("after it has been allocated, a subsequent request", func() {
+					var (
+						static *net.IPNet
+					)
 
-					network, err := manager.AllocateDynamically()
-					Ω(err).ShouldNot(HaveOccurred())
+					JustBeforeEach(func() {
+						var err error
+						_, static, err = net.ParseCIDR("10.9.3.4/30")
+						Ω(err).ShouldNot(HaveOccurred())
 
-					Ω(network).ShouldNot(BeNil())
-					Ω(network.String()).Should(Equal("10.2.3.4/30"))
+						err = manager.AllocateStatically(static)
+						Ω(err).ShouldNot(HaveOccurred())
+					})
+
+					It("returns an appropriate error", func() {
+						err := manager.AllocateStatically(static)
+						Ω(err).Should(HaveOccurred())
+						Ω(err).Should(Equal(subnets.ErrAlreadyAllocated))
+					})
+
+					Context("but after it is released", func() {
+						It("should allow allocation again", func() {
+							err := manager.Release(static)
+							Ω(err).ShouldNot(HaveOccurred())
+
+							err = manager.AllocateStatically(static)
+							Ω(err).ShouldNot(HaveOccurred())
+						})
+					})
 				})
 			})
 		})
+
+		Describe("Dynamic Allocation", func() {
+			Context("when the pool does not have sufficient IPs to allocate a subnet", func() {
+				BeforeEach(func() {
+					var err error
+					_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/31")
+					Ω(err).ShouldNot(HaveOccurred())
+				})
+
+				It("the first request returns an error", func() {
+					_, err := manager.AllocateDynamically()
+					Ω(err).Should(HaveOccurred())
+				})
+			})
+
+			Context("when the pool has sufficient IPs to allocate a single subnet", func() {
+				BeforeEach(func() {
+					var err error
+					_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/30")
+					Ω(err).ShouldNot(HaveOccurred())
+				})
+
+				Context("the first request", func() {
+					It("succeeds, and returns a /30 network within the subnet", func() {
+						network, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						Ω(network).ShouldNot(BeNil())
+						Ω(network.String()).Should(Equal("10.2.3.0/30"))
+					})
+				})
+
+				Context("subsequent requests", func() {
+					It("fail, and return an err", func() {
+						_, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						_, err = manager.AllocateDynamically()
+						Ω(err).Should(HaveOccurred())
+					})
+				})
+
+				Context("when an allocated network is released", func() {
+					It("a subsequent allocation succeeds, and returns the first network again", func() {
+						// first
+						allocated, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						// second - will fail (sanity check)
+						_, err = manager.AllocateDynamically()
+						Ω(err).Should(HaveOccurred())
+
+						// release
+						err = manager.Release(allocated)
+						Ω(err).ShouldNot(HaveOccurred())
+
+						// third - should work now because of release
+						network, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						Ω(network).ShouldNot(BeNil())
+						Ω(network.String()).Should(Equal(allocated.String()))
+					})
+				})
+
+				Context("when a network is released twice", func() {
+					It("returns an error", func() {
+						// first
+						allocated, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						// release
+						err = manager.Release(allocated)
+						Ω(err).ShouldNot(HaveOccurred())
+
+						// release again
+						err = manager.Release(allocated)
+						Ω(err).Should(HaveOccurred())
+						Ω(err).Should(Equal(subnets.ErrReleasedUnallocatedNetwork))
+					})
+				})
+			})
+
+			Context("when the pool has sufficient IPs to allocate two subnets", func() {
+				BeforeEach(func() {
+					var err error
+					_, defaultSubnetPool, err = net.ParseCIDR("10.2.3.0/29")
+					Ω(err).ShouldNot(HaveOccurred())
+				})
+
+				Context("the second request", func() {
+					It("succeeds", func() {
+						_, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						_, err = manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+					})
+
+					It("returns the second /30 network within the subnet", func() {
+						_, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						network, err := manager.AllocateDynamically()
+						Ω(err).ShouldNot(HaveOccurred())
+
+						Ω(network).ShouldNot(BeNil())
+						Ω(network.String()).Should(Equal("10.2.3.4/30"))
+					})
+				})
+
+				It("allocates distinct networks concurrently", func() {
+					prev := runtime.GOMAXPROCS(2)
+					defer runtime.GOMAXPROCS(prev)
+
+					Consistently(func() bool {
+						_, network, err := net.ParseCIDR("10.0.0.0/29")
+						Ω(err).ShouldNot(HaveOccurred())
+
+						pool, err := subnets.New(network)
+						Ω(err).ShouldNot(HaveOccurred())
+
+						out := make(chan *net.IPNet)
+						go func(out chan *net.IPNet) {
+							defer GinkgoRecover()
+							n1, err := pool.AllocateDynamically()
+							Ω(err).ShouldNot(HaveOccurred())
+							out <- n1
+						}(out)
+
+						go func(out chan *net.IPNet) {
+							defer GinkgoRecover()
+							n1, err := pool.AllocateDynamically()
+							Ω(err).ShouldNot(HaveOccurred())
+							out <- n1
+						}(out)
+
+						a := <-out
+						b := <-out
+						return a.IP.Equal(b.IP)
+					}, "100ms", "2ms").ShouldNot(BeTrue())
+				})
+
+				PIt("releases networks concurrently", func() {})
+			})
+		})
+
 	})
-
 })

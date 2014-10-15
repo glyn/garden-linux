@@ -13,13 +13,20 @@ type Manager interface {
 	// Dynamically allocates a /30 subnet, or returns an error if no more subnets can be allocated by this manager
 	AllocateDynamically() (*net.IPNet, error)
 
+	// Statically allocates a /30 subnet, and returns an error if the address has already been allocated
+	AllocateStatically(*net.IPNet) error
+
 	// Releases a previously-allocated network back to the pool
 	Release(*net.IPNet) error
+
+	// FIXME
+	PoolFoxNetworkBad() string
 }
 
 type manager struct {
 	network *net.IPNet
 	pool    []*net.IPNet
+	static  []*net.IPNet
 
 	mutex sync.Mutex
 }
@@ -28,6 +35,7 @@ var (
 	ErrInsufficientSubnets        = errors.New("Insufficient subnets remaining in the pool")
 	ErrInvalidRange               = errors.New("Invalid IP Range")
 	ErrReleasedUnallocatedNetwork = errors.New("cannot release an unallocated network")
+	ErrAlreadyAllocated           = errors.New("Subnet has already been allocated")
 )
 
 var slash30mask net.IPMask
@@ -42,11 +50,6 @@ func init() {
 }
 
 func New(network *net.IPNet) (Manager, error) {
-	size, bits := network.Mask.Size()
-	if size == bits {
-		return nil, ErrInvalidRange
-	}
-
 	min := network.IP
 	max := make([]byte, len(min))
 	for i, b := range network.Mask {
@@ -63,6 +66,26 @@ func New(network *net.IPNet) (Manager, error) {
 	}
 
 	return &manager{network: network, pool: pool}, nil
+}
+
+func (m *manager) PoolFoxNetworkBad() string {
+	return m.network.String()
+}
+
+func (m *manager) AllocateStatically(request *net.IPNet) error {
+	if m.network.Contains(request.IP) {
+		return ErrAlreadyAllocated
+	}
+
+	for _, s := range m.static {
+		if s.Contains(request.IP) {
+			return ErrAlreadyAllocated
+		}
+	}
+
+	m.static = append(m.static, request)
+
+	return nil
 }
 
 func (m *manager) AllocateDynamically() (*net.IPNet, error) {
@@ -87,6 +110,17 @@ func (m *manager) Release(network *net.IPNet) error {
 		if n == network {
 			return ErrReleasedUnallocatedNetwork
 		}
+	}
+
+	found := -1
+	for i, s := range m.static {
+		if s == network {
+			found = i
+		}
+	}
+
+	if found > -1 {
+		m.static = append(m.static[:found], m.static[found+1:]...)
 	}
 
 	m.pool = append(m.pool, network)

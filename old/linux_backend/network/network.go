@@ -20,6 +20,11 @@ func New(ipNet *net.IPNet) *Network {
 	}
 }
 
+// TODO: FOXME
+func (n Network) FoxBadIPN() *net.IPNet {
+	return n.ipNet
+}
+
 func (n Network) String() string {
 	return n.ipNet.String()
 }

@@ -20,11 +20,11 @@ import (
 
 	"github.com/cloudfoundry-incubator/cf-debug-server"
 	"github.com/cloudfoundry-incubator/cf-lager"
+	"github.com/cloudfoundry-incubator/garden-linux/net_fence/subnets"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/container_pool"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/container_pool/repository_fetcher"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/container_pool/rootfs_provider"
-	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/network_pool"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/port_pool"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/quota_manager"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/uid_pool"
@@ -177,7 +177,10 @@ func Main() {
 		logger.Fatal("malformed-network-pool", err)
 	}
 
-	networkPool := network_pool.New(ipNet)
+	networkPool, err := subnets.New(ipNet) // Fixme: should be in outer main.go, not old/main.go
+	if err != nil {
+		logger.Fatal("malformed-network-pool", err)
+	}
 
 	// TODO: use /proc/sys/net/ipv4/ip_local_port_range by default (end + 1)
 	portPool := port_pool.New(uint32(*portPoolStart), uint32(*portPoolSize))

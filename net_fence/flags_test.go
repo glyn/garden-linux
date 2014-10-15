@@ -14,39 +14,39 @@ var _ = Describe("Network Fence Flags", func() {
 
 	Describe("The networkPool flag", func() {
 
-			var (
-				flagset *flag.FlagSet
-				ipNet   *net.IPNet
-				cmdline []string
-			)
+		var (
+			flagset *flag.FlagSet
+			ipNet   *net.IPNet
+			cmdline []string
+		)
 
-			JustBeforeEach(func() {
-				net_fence.NewIpPoolFromIPNet = func(ipn *net.IPNet) (ip_pool.IPPool, error) {
-					ipNet = ipn
-					return nil, nil
-				}
+		JustBeforeEach(func() {
+			net_fence.NewIpPoolFromIPNet = func(ipn *net.IPNet) (ip_pool.IPPool, error) {
+				ipNet = ipn
+				return nil, nil
+			}
 
-				flagset = &flag.FlagSet{}
-				net_fence.InitializeFlags(flagset)
+			flagset = &flag.FlagSet{}
+			net_fence.InitializeFlags(flagset)
 
-				flagset.Parse(cmdline)
+			flagset.Parse(cmdline)
 
-			})
+		})
 
 		Context("when not supplied", func() {
-				BeforeEach(func() {
-					cmdline = []string{}
-				})
-
-				It("configured the network pool with the default value", func() {
-						err := net_fence.Initialize()
-						Ω(err).ShouldNot(HaveOccurred())
-
-						_, network, err := net.ParseCIDR(net_fence.DefaultNetworkPool)
-						Ω(err).ShouldNot(HaveOccurred())
-						Ω(ipNet).Should(Equal(network))
-					})
+			BeforeEach(func() {
+				cmdline = []string{}
 			})
+
+			It("configured the network pool with the default value", func() {
+				err := net_fence.Initialize()
+				Ω(err).ShouldNot(HaveOccurred())
+
+				_, network, err := net.ParseCIDR(net_fence.DefaultNetworkPool)
+				Ω(err).ShouldNot(HaveOccurred())
+				Ω(ipNet).Should(Equal(network))
+			})
+		})
 
 		Context("when supplied", func() {
 			Context("and when it's valid", func() {

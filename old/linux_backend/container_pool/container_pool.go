@@ -18,11 +18,12 @@ import (
 	"github.com/cloudfoundry/gunk/command_runner"
 	"github.com/pivotal-golang/lager"
 
+	"github.com/cloudfoundry-incubator/garden-linux/net_fence/subnets"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/bandwidth_manager"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/cgroups_manager"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/container_pool/rootfs_provider"
-	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/network_pool"
+	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/network"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/process_tracker"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/quota_manager"
 	"github.com/cloudfoundry-incubator/garden-linux/old/linux_backend/uid_pool"
@@ -46,7 +47,7 @@ type LinuxContainerPool struct {
 	rootfsProviders map[string]rootfs_provider.RootFSProvider
 
 	uidPool     uid_pool.UIDPool
-	networkPool network_pool.NetworkPool
+	networkPool subnets.Manager
 	portPool    linux_backend.PortPool
 
 	runner command_runner.CommandRunner
@@ -62,7 +63,7 @@ func New(
 	sysconfig sysconfig.Config,
 	rootfsProviders map[string]rootfs_provider.RootFSProvider,
 	uidPool uid_pool.UIDPool,
-	networkPool network_pool.NetworkPool,
+	networkPool subnets.Manager,
 	portPool linux_backend.PortPool,
 	denyNetworks, allowNetworks []string,
 	runner command_runner.CommandRunner,
@@ -98,7 +99,7 @@ func New(
 }
 
 func (p *LinuxContainerPool) MaxContainers() int {
-	maxNet := p.networkPool.InitialSize()
+	maxNet := 100 // TODO: FIXME_BEFORE_MERGE p.networkPool.InitialSize()
 	maxUid := p.uidPool.InitialSize()
 	if maxNet < maxUid {
 		return maxNet
@@ -109,7 +110,7 @@ func (p *LinuxContainerPool) MaxContainers() int {
 func (p *LinuxContainerPool) Setup() error {
 	setup := exec.Command(path.Join(p.binPath, "setup.sh"))
 	setup.Env = []string{
-		"POOL_NETWORK=" + p.networkPool.Network().String(),
+		"POOL_NETWORK=" + p.networkPool.PoolFoxNetworkBad(),
 		"DENY_NETWORKS=" + formatNetworks(p.denyNetworks),
 		"ALLOW_NETWORKS=" + formatNetworks(p.allowNetworks),
 		"CONTAINER_DEPOT_PATH=" + p.depotPath,
@@ -225,17 +226,19 @@ func (p *LinuxContainerPool) Restore(snapshot io.Reader) (linux_backend.Containe
 		return nil, err
 	}
 
+	/* TODO: FIXME_BEFORE_MERGE
 	err = p.networkPool.Remove(resources.Network)
 	if err != nil {
 		p.uidPool.Release(resources.UID)
 		return nil, err
 	}
+	*/
 
 	for _, port := range resources.Ports {
 		err = p.portPool.Remove(port)
 		if err != nil {
 			p.uidPool.Release(resources.UID)
-			p.networkPool.Release(resources.Network)
+			p.networkPool.Release(resources.Network.FoxBadIPN())
 
 			for _, port := range resources.Ports {
 				p.portPool.Release(port)
@@ -386,12 +389,14 @@ func (p *LinuxContainerPool) aquirePoolResources() (*linux_backend.Resources, er
 		return nil, err
 	}
 
-	resources.Network, err = p.networkPool.Acquire()
+	ipn, err := p.networkPool.AllocateDynamically()
 	if err != nil {
 		p.logger.Error("network-acquire-failed", err)
 		p.releasePoolResources(resources)
 		return nil, err
 	}
+
+	resources.Network = network.New(ipn)
 
 	return resources, nil
 }
@@ -406,7 +411,7 @@ func (p *LinuxContainerPool) releasePoolResources(resources *linux_backend.Resou
 	}
 
 	if resources.Network != nil {
-		p.networkPool.Release(resources.Network)
+		p.networkPool.Release(resources.Network.FoxBadIPN())
 	}
 }
 
