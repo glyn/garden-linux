@@ -221,25 +221,114 @@ var _ = Describe("Container pool", func() {
 			Ω(container.Properties()).Should(Equal(properties))
 		})
 
-		It("executes create.sh with the correct args and environment", func() {
-			container, err := pool.Create(api.ContainerSpec{})
-			Ω(err).ShouldNot(HaveOccurred())
+		Context("when no Network parameter is specified", func() {
 
-			Ω(fakeRunner).Should(HaveExecutedSerially(
-				fake_command_runner.CommandSpec{
-					Path: "/root/path/create.sh",
-					Args: []string{path.Join(depotPath, container.ID())},
-					Env: []string{
-						"id=" + container.ID(),
-						"rootfs_path=/provided/rootfs/path",
-						"user_uid=10000",
-						"network_host_ip=1.2.0.1",
-						"network_container_ip=1.2.0.2",
+			It("executes create.sh with the correct args and environment", func() {
+				container, err := pool.Create(api.ContainerSpec{})
+				Ω(err).ShouldNot(HaveOccurred())
 
-						"PATH=" + os.Getenv("PATH"),
+				Ω(fakeRunner).Should(HaveExecutedSerially(
+					fake_command_runner.CommandSpec{
+						Path: "/root/path/create.sh",
+						Args: []string{path.Join(depotPath, container.ID())},
+						Env: []string{
+							"id=" + container.ID(),
+							"rootfs_path=/provided/rootfs/path",
+							"user_uid=10000",
+							"network_host_ip=1.2.0.1",
+							"network_container_ip=1.2.0.2",
+
+							"PATH=" + os.Getenv("PATH"),
+						},
 					},
-				},
-			))
+				))
+			})
+		})
+
+		Context("when the Network parameter is specified", func() {
+
+			It("executes create.sh with the correct args and environment", func() {
+				container, err := pool.Create(api.ContainerSpec{
+					Network: "1.3.0.0/30",
+				})
+				Ω(err).ShouldNot(HaveOccurred())
+
+				Ω(fakeRunner).Should(HaveExecutedSerially(
+					fake_command_runner.CommandSpec{
+						Path: "/root/path/create.sh",
+						Args: []string{path.Join(depotPath, container.ID())},
+						Env: []string{
+							"id=" + container.ID(),
+							"rootfs_path=/provided/rootfs/path",
+							"user_uid=10000",
+							"network_host_ip=1.3.0.1",
+							"network_container_ip=1.3.0.2",
+
+							"PATH=" + os.Getenv("PATH"),
+						},
+					},
+				))
+			})
+
+			It("statically allocates the requested Network", func() {
+				_, err := pool.Create(api.ContainerSpec{
+					Network: "1.3.0.0/30",
+				})
+				Ω(err).ShouldNot(HaveOccurred())
+
+				Ω(fakeNetworkPool.StaticallyAllocated).Should(ContainElement("1.3.0.0/30"))
+			})
+
+			Context("when an invalid Network is requested", func() {
+				var err error
+
+				BeforeEach(func() {
+					_, err = pool.Create(api.ContainerSpec{
+						Network: "invalidNetworkString",
+					})
+				})
+
+				It("returns the error", func() {
+					Ω(err).Should(HaveOccurred())
+				})
+
+				itReleasesTheUserID()
+
+				It("does not execute create.sh", func() {
+					Ω(fakeRunner).ShouldNot(HaveExecutedSerially(
+						fake_command_runner.CommandSpec{
+							Path: "/root/path/create.sh",
+						},
+					))
+				})
+			})
+
+			Context("when allocation of the specified Network fails", func() {
+				var err error
+				allocateError := errors.New("allocateError")
+
+				BeforeEach(func() {
+					fakeNetworkPool.AllocateStaticError = allocateError
+					_, err = pool.Create(api.ContainerSpec{
+						Network: "1.2.0.0/30",
+					})
+				})
+
+				It("returns the error", func() {
+					Ω(err).Should(Equal(allocateError))
+				})
+
+				itReleasesTheUserID()
+
+				It("does not execute create.sh", func() {
+					Ω(fakeRunner).ShouldNot(HaveExecutedSerially(
+						fake_command_runner.CommandSpec{
+							Path: "/root/path/create.sh",
+						},
+					))
+				})
+			})
+
 		})
 
 		It("saves the determined rootfs provider to the depot", func() {

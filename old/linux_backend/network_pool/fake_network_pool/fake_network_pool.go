@@ -10,11 +10,13 @@ type FakeNetworkPool struct {
 
 	InitialPoolSize int
 
-	AcquireError error
-	RecoverError error
+	AcquireError        error
+	RecoverError        error
+	AllocateStaticError error
 
-	Released  []string
-	Recovered []string
+	Released            []string
+	Recovered           []string
+	StaticallyAllocated []string
 }
 
 func New(ipNet *net.IPNet) *FakeNetworkPool {
@@ -48,6 +50,11 @@ func (p *FakeNetworkPool) AllocateDynamically() (*net.IPNet, error) {
 }
 
 func (p *FakeNetworkPool) AllocateStatically(ipNet *net.IPNet) error {
+	if p.AllocateStaticError != nil {
+		return p.AllocateStaticError
+	}
+
+	p.StaticallyAllocated = append(p.StaticallyAllocated, ipNet.String())
 	return nil
 }
 

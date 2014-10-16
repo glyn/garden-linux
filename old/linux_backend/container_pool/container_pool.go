@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -170,7 +171,7 @@ func (p *LinuxContainerPool) Create(spec api.ContainerSpec) (c linux_backend.Con
 
 	pLog.Info("creating")
 
-	resources, err := p.aquirePoolResources()
+	resources, err := p.aquirePoolResources(spec)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +378,7 @@ func (p *LinuxContainerPool) saveRootFSProvider(id string, provider string) erro
 	return ioutil.WriteFile(providerFile, []byte(provider), 0644)
 }
 
-func (p *LinuxContainerPool) aquirePoolResources() (*linux_backend.Resources, error) {
+func (p *LinuxContainerPool) aquirePoolResources(spec api.ContainerSpec) (*linux_backend.Resources, error) {
 	var err error
 	resources := linux_backend.NewResources(0, nil, nil)
 
@@ -387,16 +388,34 @@ func (p *LinuxContainerPool) aquirePoolResources() (*linux_backend.Resources, er
 		return nil, err
 	}
 
-	ipn, err := p.networkPool.AllocateDynamically()
-	if err != nil {
-		p.logger.Error("network-acquire-failed", err)
-		p.releasePoolResources(resources)
-		return nil, err
+	var ipn *net.IPNet
+	if spec.Network == "" {
+		ipn, err = p.networkPool.AllocateDynamically()
+		if err != nil {
+			p.logger.Error("network-acquire-failed", err)
+			p.releasePoolResources(resources)
+			return nil, err
+		}
+	} else {
+		_, ipn, err = net.ParseCIDR(spec.Network)
+		if err != nil {
+			p.logger.Error("invalid-network-parameter", err)
+			p.releasePoolResources(resources)
+			return nil, err
+		}
+
+		err = p.networkPool.AllocateStatically(ipn)
+		if err != nil {
+			p.logger.Error("network-acquire-failed", err)
+			p.releasePoolResources(resources)
+			return nil, err
+		}
 	}
 
 	resources.Network = network.New(ipn)
 
 	return resources, nil
+
 }
 
 func (p *LinuxContainerPool) releasePoolResources(resources *linux_backend.Resources) {
