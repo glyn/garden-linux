@@ -126,7 +126,7 @@ var _ = Describe("Linux containers", func() {
 		BeforeEach(func() {
 			var err error
 
-			err = container.Start()
+			err = container.Start(1500)
 			Ω(err).ShouldNot(HaveOccurred())
 
 			_, _, err = container.NetIn(1, 2)
@@ -524,7 +524,7 @@ var _ = Describe("Linux containers", func() {
 
 	Describe("Starting", func() {
 		It("executes the container's start.sh with the correct environment", func() {
-			err := container.Start()
+			err := container.Start(1400)
 			Ω(err).ShouldNot(HaveOccurred())
 
 			Ω(fakeRunner).Should(HaveExecutedSerially(
@@ -532,7 +532,7 @@ var _ = Describe("Linux containers", func() {
 					Path: containerDir + "/start.sh",
 					Env: []string{
 						"id=some-id",
-						"container_iface_mtu=1500",
+						"container_iface_mtu=1400",
 						"PATH=" + os.Getenv("PATH"),
 					},
 				},
@@ -543,7 +543,7 @@ var _ = Describe("Linux containers", func() {
 		It("changes the container's state to active", func() {
 			Ω(container.State()).Should(Equal(linux_backend.StateBorn))
 
-			err := container.Start()
+			err := container.Start(1500)
 			Ω(err).ShouldNot(HaveOccurred())
 
 			Ω(container.State()).Should(Equal(linux_backend.StateActive))
@@ -563,14 +563,14 @@ var _ = Describe("Linux containers", func() {
 			})
 
 			It("returns the error", func() {
-				err := container.Start()
+				err := container.Start(1500)
 				Ω(err).Should(Equal(nastyError))
 			})
 
 			It("does not change the container's state", func() {
 				Ω(container.State()).Should(Equal(linux_backend.StateBorn))
 
-				err := container.Start()
+				err := container.Start(1500)
 				Ω(err).Should(HaveOccurred())
 
 				Ω(container.State()).Should(Equal(linux_backend.StateBorn))
