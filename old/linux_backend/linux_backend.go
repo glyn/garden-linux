@@ -19,7 +19,7 @@ type Container interface {
 	Properties() api.Properties
 	GraceTime() time.Duration
 
-	Start() error
+	Start(mtu uint32) error
 
 	Snapshot(io.Writer) error
 	Cleanup()
@@ -42,6 +42,7 @@ type LinuxBackend struct {
 	containerPool ContainerPool
 	systemInfo    system_info.Provider
 	snapshotsPath string
+	mtu           uint32
 
 	containers      map[string]Container
 	containersMutex *sync.RWMutex
@@ -71,13 +72,14 @@ func (e FailedToSnapshotError) Error() string {
 	return fmt.Sprintf("failed to save snapshot: %s", e.OriginalError)
 }
 
-func New(logger lager.Logger, containerPool ContainerPool, systemInfo system_info.Provider, snapshotsPath string) *LinuxBackend {
+func New(logger lager.Logger, containerPool ContainerPool, systemInfo system_info.Provider, snapshotsPath string, mtu uint32) *LinuxBackend {
 	return &LinuxBackend{
 		logger: logger.Session("backend"),
 
 		containerPool: containerPool,
 		systemInfo:    systemInfo,
 		snapshotsPath: snapshotsPath,
+		mtu:           mtu,
 
 		containers:      make(map[string]Container),
 		containersMutex: new(sync.RWMutex),
@@ -153,7 +155,7 @@ func (b *LinuxBackend) Create(spec api.ContainerSpec) (api.Container, error) {
 		return nil, err
 	}
 
-	err = container.Start()
+	err = container.Start(b.mtu)
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,7 @@ type FakeContainer struct {
 
 	StartError error
 	Started    bool
+	Mtu        uint32
 
 	CleanedUp bool
 }
@@ -46,8 +47,9 @@ func (c *FakeContainer) Properties() api.Properties {
 	return c.Spec.Properties
 }
 
-func (c *FakeContainer) Start() error {
+func (c *FakeContainer) Start(mtu uint32) error {
 	c.Started = true
+	c.Mtu = mtu
 	return c.StartError
 }
 

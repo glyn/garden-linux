@@ -3,6 +3,8 @@ package old
 import (
 	"bytes"
 	"flag"
+	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -149,6 +151,12 @@ var tag = flag.String(
 	"server-wide identifier used for 'global' configuration",
 )
 
+var mtu = flag.Uint64(
+	"mtu",
+	1500,
+	"MTU size for container network interfaces",
+)
+
 func Main() {
 	flag.Parse()
 
@@ -240,7 +248,11 @@ func Main() {
 
 	systemInfo := system_info.NewProvider(*depotPath)
 
-	backend := linux_backend.New(logger, pool, systemInfo, *snapshotsPath)
+	if *mtu > math.MaxUint32 {
+		logger.Error("validation", fmt.Errorf("invalid value %d for flag -mtu: value out of range (maximum value %d)", *mtu, math.MaxUint32))
+		os.Exit(2)
+	}
+	backend := linux_backend.New(logger, pool, systemInfo, *snapshotsPath, uint32(*mtu))
 
 	err = backend.Setup()
 	if err != nil {

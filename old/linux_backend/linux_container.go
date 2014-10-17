@@ -327,7 +327,7 @@ func (c *LinuxContainer) Restore(snapshot ContainerSnapshot) error {
 	return nil
 }
 
-func (c *LinuxContainer) Start() error {
+func (c *LinuxContainer) Start(mtu uint32) error {
 	cLog := c.logger.Session("start")
 
 	cLog.Debug("starting")
@@ -335,7 +335,7 @@ func (c *LinuxContainer) Start() error {
 	start := exec.Command(path.Join(c.path, "start.sh"))
 	start.Env = []string{
 		"id=" + c.id,
-		"container_iface_mtu=1500",
+		"container_iface_mtu=" + fmt.Sprintf("%d", mtu),
 		"PATH=" + os.Getenv("PATH"),
 	}
 
