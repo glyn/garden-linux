@@ -373,6 +373,18 @@ func (c *LinuxContainer) Start() error {
 		return err
 	}
 
+	containerPid, err := c.wshdPid()
+	if err != nil {
+		cLog.Error("failed-to-get-wshd-pid", err)
+		return err
+	}
+
+	err = c.resources.Network.Erect(containerPid)
+	if err != nil {
+		cLog.Error("failed-to-erect-network-fence", err)
+		return err
+	}
+
 	c.setState(StateActive)
 
 	cLog.Info("started")
@@ -506,21 +518,30 @@ func (c *LinuxContainer) Info() (api.ContainerInfo, error) {
 	return info, nil
 }
 
-func (c *LinuxContainer) StreamIn(dstPath string, tarStream io.Reader) error {
-	nsTarPath := path.Join(c.path, "bin", "nstar")
+func (c *LinuxContainer) wshdPid() (int, error) {
 	pidPath := path.Join(c.path, "run", "wshd.pid")
 
 	pidFile, err := os.Open(pidPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	defer pidFile.Close()
 
 	var pid int
 	_, err = fmt.Fscanf(pidFile, "%d", &pid)
 	if err != nil {
+		return 0, err
+	}
+	return pid, nil
+}
+
+func (c *LinuxContainer) StreamIn(dstPath string, tarStream io.Reader) error {
+	pid, err := c.wshdPid()
+	if err != nil {
 		return err
 	}
 
+	nsTarPath := path.Join(c.path, "bin", "nstar")
 	tar := exec.Command(
 		nsTarPath,
 		strconv.Itoa(pid),
@@ -548,20 +569,12 @@ func (c *LinuxContainer) StreamOut(srcPath string) (io.ReadCloser, error) {
 		compressArg = "."
 	}
 
+	pid, err := c.wshdPid()
+	if err != nil {
+		return nil, err
+	}
+
 	nsTarPath := path.Join(c.path, "bin", "nstar")
-	pidPath := path.Join(c.path, "run", "wshd.pid")
-
-	pidFile, err := os.Open(pidPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var pid int
-	_, err = fmt.Fscanf(pidFile, "%d", &pid)
-	if err != nil {
-		return nil, err
-	}
-
 	tar := exec.Command(
 		nsTarPath,
 		strconv.Itoa(pid),

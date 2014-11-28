@@ -26,13 +26,13 @@ var _ = Describe("Fence", func() {
 		Ω(err).ShouldNot(HaveOccurred())
 
 		fakeSubnetPool = &fakeSubnets{nextSubnet: a}
-		fence = &f{fakeSubnetPool, 1500, net.ParseIP("1.2.3.4")}
+		fence = &f{fakeSubnetPool, 1500, net.ParseIP("1.2.3.4"), ""}
 	})
 
 	Describe("Capacity", func() {
 		It("delegates to Subnets", func() {
 			fakeSubnetPool.capacity = 4
-			fence := &f{fakeSubnetPool, 1500, net.ParseIP("1.2.3.4")}
+			fence := &f{fakeSubnetPool, 1500, net.ParseIP("1.2.3.4"), ""}
 
 			Ω(fence.Capacity()).Should(Equal(4))
 		})

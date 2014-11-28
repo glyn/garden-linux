@@ -285,7 +285,7 @@ type FakeAllocation struct {
 	name string
 }
 
-func (a *FakeAllocation) Deconfigure() error {
+func (a *FakeAllocation) Erect(containerPid int) error {
 	return nil
 }
 

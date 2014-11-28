@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/cloudfoundry-incubator/garden-linux/fences"
@@ -13,10 +17,11 @@ import (
 	"github.com/cloudfoundry-incubator/garden/api"
 )
 
-type f struct {
+type f struct { // FIXME: rename f to fenceBuilder
 	subnets.Subnets
 	mtu        uint32
 	externalIP net.IP
+	binPath    string
 }
 
 type FlatFence struct {
@@ -114,11 +119,87 @@ type Allocation struct {
 	hostIfcName      string
 	subnetShareable  bool
 	bridgeIfcName    string
-	fence            *f
+	fence            *f // FIXME: rename fence to fenceBldr
 }
 
 func (a *Allocation) String() string {
 	return "Allocation{" + a.IPNet.String() + ", " + a.containerIP.String() + "}" // FIXME: fill this out
+}
+
+func (a *Allocation) Erect(containerPid int) error {
+
+	err := ConfigureHost(a.hostIfcName, a.containerIfcName, subnets.GatewayIP(a.IPNet), a.subnetShareable, a.bridgeIfcName, a.IPNet, containerPid, int(a.fence.mtu))
+	if err != nil {
+		fmt.Println("ConfigureHost failed:", err)
+		return err
+	}
+
+	// [ ! -d /var/run/netns ] && mkdir -p /var/run/netns
+	err = os.MkdirAll("/var/run/netns", 0700)
+	if err != nil {
+		fmt.Println("MkdirAll of /var/run/netns failed:", err)
+		return err
+	}
+
+	// [ -f /var/run/netns/$PID ] && rm -f /var/run/netns/$PID
+	netnsPid := path.Join("/var", "run", "netns", strconv.Itoa(containerPid))
+	err = os.RemoveAll(netnsPid)
+	if err != nil {
+		fmt.Println("RemoveAll of /var/run/netns/$PID failed", err)
+		return err
+	}
+
+	// mkdir -p /sys
+	err = os.MkdirAll("/sys", 0700)
+	if err != nil {
+		fmt.Println("MkdirAll /sys failed:", err)
+		return err
+	}
+
+	// mount -n -t tmpfs tmpfs /sys  # otherwise netns exec fails
+	// FIXME: replace with library call
+	err = exec.Command("mount", "-n", "-t", "tmpfs", "tmpfs", "/sys").Run()
+	if err != nil {
+		fmt.Println("mount -n -t tmpfs tmpfs /sys failed:", err)
+		return err
+	}
+
+	// umount /sys
+	defer func() {
+		if err := exec.Command("umount", "/sys").Run(); err != nil {
+			fmt.Println("Failed to unmount /sys:", err)
+		}
+	}()
+
+	// ln -s /proc/$PID/ns/net /var/run/netns/$PID
+	procNetnsPid := path.Join("/proc", strconv.Itoa(containerPid), "ns", "net")
+	err = exec.Command("ln", "-s", procNetnsPid, netnsPid).Run()
+	if err != nil {
+		fmt.Printf("ln -s %s %s failed: %s\n", procNetnsPid, netnsPid, err)
+		return err
+	}
+
+	// ip netns exec $PID ./bin/net-fence -target=container \
+	//                 -containerIfcName=$network_container_iface \
+	//                 -containerIP=$network_container_ip \
+	//                 -gatewayIP=$network_host_ip \
+	//                 -subnet=$network_cidr \
+	//                 -mtu=$container_iface_mtu
+	netFencePath := path.Join(a.fence.binPath, "net-fence")
+	cmd := exec.Command("ip", "netns", "exec", strconv.Itoa(containerPid), netFencePath,
+		"-target=container",
+		"-containerIfcName="+a.containerIfcName,
+		"-containerIP="+a.containerIP.String(),
+		"-gatewayIP="+subnets.GatewayIP(a.IPNet).String(),
+		"-subnet="+a.IPNet.String(),
+		"-mtu="+strconv.Itoa(int(a.fence.mtu)))
+	op, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("ip netns exec of %s failed: %s\nOutput:\n%s\n", netFencePath, err, string(op))
+		return err
+	}
+
+	return nil
 }
 
 func (a *Allocation) Dismantle() error {
@@ -134,7 +215,6 @@ func (a *Allocation) Dismantle() error {
 func (a *Allocation) Info(i *api.ContainerInfo) {
 	i.HostIP = subnets.GatewayIP(a.IPNet).String()
 	i.ContainerIP = a.containerIP.String()
-	i.ExternalIP = a.fence.externalIP.String()
 }
 
 func (a *Allocation) MarshalJSON() ([]byte, error) {

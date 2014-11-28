@@ -19,6 +19,7 @@ type Config struct {
 	Network    CidrVar
 	Mtu        MtuVar
 	ExternalIP IPVar
+	BinPath    string
 }
 
 func init() {
@@ -45,6 +46,8 @@ func (config *Config) Init(fs *flag.FlagSet) error {
 	fs.Var(&config.ExternalIP, "externalIP",
 		"IP address to use to reach container's mapped ports")
 
+	fs.StringVar(&config.BinPath, "binPath", "./", "path to hold binaries")
+
 	return nil
 }
 
@@ -54,8 +57,8 @@ func (config *Config) Main(registry *fences.BuilderRegistry) error {
 		return err
 	}
 
-	fence := &f{subnets, uint32(config.Mtu), config.ExternalIP.IP}
-	registry.Register(fence)
+	fenceBldr := &f{subnets, uint32(config.Mtu), config.ExternalIP.IP, config.BinPath}
+	registry.Register(fenceBldr)
 
 	return nil
 }

@@ -68,7 +68,7 @@ func (p *FakeFences) Capacity() int {
 	return p.InitialPoolSize
 }
 
-func (f *FakeAllocation) Deconfigure() error {
+func (f *FakeAllocation) Erect(containerPid int) error {
 	return nil
 }
 
