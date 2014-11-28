@@ -2,7 +2,6 @@ package lifecycle_test
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cloudfoundry-incubator/garden/api"
@@ -21,11 +20,11 @@ var _ = FDescribe("With a blocked network range", func() {
 	)
 
 	BeforeEach(func() {
-		client = startGarden(
-			"-denyNetworks", strings.Join([]string{
-				blockedListenerIP + "/24",
-			}, ","),
-		)
+		client = startGarden()
+		// "-denyNetworks", strings.Join([]string{
+		// 	blockedListenerIP + "/32",
+		// }, ","),
+		// )
 
 		var err error
 
